@@ -161,12 +161,14 @@ all checks passed
 ## The rendered MP4
 
 Rendered without a GPU (EEVEE on Mesa llvmpipe, 4 CPU cores), so with reduced
-settings: 1280×720, 30 fps, 4 EEVEE samples, half-resolution shadow maps
-(~5.5 s per frame, 3,611 frames), then muxed with the MP3:
+settings (`FIL_CPU_DRAFT=1`): 1280×720, 30 fps, 4 EEVEE samples, no
+screen-space ray tracing, half-resolution shadow maps (~6 s per frame,
+3,611 frames), then muxed with the MP3. On this machine one Blender process
+was faster than two in parallel.
 
 ```sh
 FIL_AUDIO=song.mp3 FIL_RES=1280x720 blender -b --python blender/falling_in_love.py -- --save final.blend
-FIL_SHADOW_SCALE=0.5 blender -b --python tools/render_frames.py -- final.blend frames 1 3611 1 1280x720 4
+FIL_CPU_DRAFT=1 blender -b --python tools/render_frames.py -- final.blend frames 1 3611 1 1280x720 4
 tools/make_video.sh frames song.mp3 falling_in_love.mp4
 ```
 

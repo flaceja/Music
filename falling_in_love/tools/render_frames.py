@@ -34,8 +34,13 @@ if rest:
 if len(rest) > 1:
     scene.eevee.taa_render_samples = int(rest[1])
     scene.cycles.samples = int(rest[1])
-if os.environ.get("FIL_SHADOW_SCALE"):                    # cheaper shadow maps for CPU renders
-    scene.eevee.shadow_resolution_scale = float(os.environ["FIL_SHADOW_SCALE"])
+if os.environ.get("FIL_CPU_DRAFT"):
+    # cheaper EEVEE for CPU-only machines (software OpenGL): no screen-space ray
+    # tracing, fewer shadow rays/steps, half-resolution shadow maps
+    ee = scene.eevee
+    ee.use_raytracing = False
+    ee.shadow_ray_count, ee.shadow_step_count = 1, 4
+    ee.shadow_resolution_scale = 0.5
 im = scene.render.image_settings
 if hasattr(im, "media_type"):
     im.media_type = "IMAGE"
