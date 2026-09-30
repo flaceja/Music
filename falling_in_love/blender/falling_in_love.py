@@ -2513,8 +2513,10 @@ def setup_render(scene, n_frames, audio):
                 except (TypeError, AttributeError):
                     pass
     r.use_motion_blur = MOTION_BLUR
-    if hasattr(r, "motion_blur_shutter"):
-        r.motion_blur_shutter = 0.4
+    r.motion_blur_shutter = 0.4
+    # shutter opens on the frame: with the default (centred) shutter the frame
+    # of every camera cut would be smeared across both shots
+    r.motion_blur_position = "START"
     vs = scene.view_settings
     try:
         vs.view_transform = "AgX"
