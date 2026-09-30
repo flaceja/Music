@@ -2092,7 +2092,6 @@ class ClaudeAnim:
         tl, m = self.tl, self.m
         hops = self.hops
         takeoffs = [h["t"] - h["air"] for h in hops]
-        n = tl.n
         X, Z, SPIN, SQ, ARMS = [], [], [], [], []
         S = m.sections
         crouch = [(S["stops"][0] - 2.7, S["stops"][0] - 0.46, 0.22),
@@ -2132,10 +2131,9 @@ class ClaudeAnim:
         return X, Z, SPIN, SQ, ARMS
 
     def bake(self, claude):
-        tl, m, rng = self.tl, self.m, self.rng
+        tl, m = self.tl, self.m
         fr, n = tl.frames, tl.n
         X, Z, SPIN, SQ, ARMS = self.sample()
-        S = m.sections
         sec_at = [m.section_at(t) for t in tl.times]
         sway_amp = {"intro": 0.05, "run": 0.06, "hold": 0.0, "stops": 0.05, "groove": 0.08, "light": 0.11,
                     "light_bass": 0.08, "ritard": 0.05, "break": 0.0, "stops2": 0.05, "chorus": 0.1,
