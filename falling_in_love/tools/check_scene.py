@@ -3,9 +3,8 @@
     blender -b --python tools/check_scene.py            (or: python check_scene.py with the bpy module)
 
 Checks
-  1. keys:     every MIDI note has its key fully down on its onset frame and
-               the key is not already fully down the frame before (unless the
-               same key is still held from a note < 2 frames earlier)
+  1. keys:     a key is only ever down while a character is on it (a cat
+               paw at its surface, or one of Claude's feet)
   2. paws:     every cat paw contact lies on the struck key (inside its x/y
                bounds, within 3 mm of its top surface) while the key is down
   3. surfaces: paws never sink more than 4 mm into a key, never float away
@@ -20,7 +19,7 @@ import os
 import runpy
 import sys
 
-import bpy
+import bpy  # noqa: F401  (must come before bpy_extras)
 from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Vector
 
@@ -51,24 +50,43 @@ def fc_value(obj, path, index, f):
 
 
 # 1. keys ---------------------------------------------------------------------
-n_ok = 0
-for n in music.notes:
-    f = int(round(frame_of(n.on)))
-    o = keys[n.pitch]
-    th = key_theta(n.pitch)
-    down = fc_value(o, "rotation_euler", 0, f)
-    before = fc_value(o, "rotation_euler", 0, f - 1)
-    if abs(down - th) > 1e-6:
-        fail(f"key {n.pitch} not down at frame {f} (note at {n.on:.3f}s): {down:.4f} vs {th:.4f}")
-    elif before > th - 1e-6:
-        prev = [m for m in music.by_pitch[n.pitch] if m.on < n.on - 1e-6]
-        if not prev or f - int(round(frame_of(prev[-1].on))) > 2:
-            fail(f"key {n.pitch} already down before its note at frame {f}")
+# every frame a key is down, a character must be touching that key: a cat paw
+# on it (within its bounds, at its surface) or one of Claude's feet standing on it
+ka = R["key_anim"]
+X, Z = R["claude_anim"].sample()[:2]
+CFX = mod["CLAUDE_FOOT_X"]
+pressed_frames = untouched = 0
+by_char = {"cat": 0, "claude": 0}
+for p, (fs, vs) in ka.pts.items():
+    half = (BLACK_W if is_black(p) else WHITE_W) / 2
+    for f in range(max(fs[0], tl.frames[0]), min(fs[-1], tl.frames[-1]) + 1):
+        if ka.press(p, f) < 0.05:
+            continue
+        pressed_frames += 1
+        i = f - tl.frames[0]
+        who = None
+        for paw in cat.paws:
+            q = cat_anim.paw_world[paw][i]
+            if (abs(q.x - key_x(p)) <= half + 0.004 and -(BLACK_L if is_black(p) else WHITE_L) <= q.y <= 0
+                    and -0.006 < q.z - ka.surface_z(p, q.y, f) < 0.015):   # on it, or mid-strike
+                who = "cat"
+                break
+        if who is None and Z[i] < 1e-3:
+            for sd in (-1, 1):
+                if key_at(X[i] + sd * CFX, mod["Y_CLAUDE"]) == p:
+                    who = "claude"
+        if who is None:
+            untouched += 1
+            if untouched <= 8:
+                q = {pw: tuple(round(v, 4) for v in cat_anim.paw_world[pw][i]) for pw in cat.paws}
+                print("   ", p, f, round(ka.press(p, f), 2), round(key_x(p), 4), round(ka.surface_z(p, -0.1, f), 4), q,
+                      "claude", round(X[i], 3), round(Z[i], 3))
+                fail(f"key {p} is down at frame {f} ({mod['time_of'](f):.2f}s) but nobody is on it")
         else:
-            n_ok += 1
-    else:
-        n_ok += 1
-print(f"[check] keys: {n_ok}/{len(music.notes)} notes strike on their frame")
+            by_char[who] += 1
+n_down = sum(len(v) for v in ka.onsets.values())
+print(f"[check] keys: {n_down} key strikes, {pressed_frames} key-down frames, "
+      f"{untouched} without a character on the key (cat {by_char['cat']}, Claude {by_char['claude']})")
 
 # 2 + 3. paws -----------------------------------------------------------------
 contacts = cat_anim.contacts

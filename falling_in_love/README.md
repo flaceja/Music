@@ -5,8 +5,10 @@ room, an upright piano with string lights, the **Claude avatar** (a coral box
 with little legs and dynamic eyes) and a **black cat**, playing JVKE's
 *this is what falling in love feels like* together.
 
-* all **916 notes** of the piano MIDI press their key on the exact frame
-  (with a warm glow while the key is down)
+* **a key only goes down where a character is on it**: the cat's paw strikes
+  (real right-hand notes, on their frame) and the keys under Claude's feet when
+  it lands on the beat. Keys nobody touches stay up, so the keyboard never
+  "plays itself" away from the characters (pressed keys glow warm)
 * the **cat plays the right hand**: it walks, sits and stretches on the
   keyboard, and its front paws land on real melody notes at the moment they
   sound (185 paw strikes, each verified to hit its key)
@@ -95,9 +97,12 @@ exists for fine-tuning (e.g. a Bluetooth delay).
 * **MIDI reader**: `mido` if Blender's Python has it, otherwise a 60-line
   built-in Standard MIDI File reader. Both give the same 916 notes (and match
   `pretty_midi` to 1 µs).
-* **Keys** pivot on a hinge behind the fallboard. A key is at rest one frame
-  before its onset, fully down on the onset frame, held for the note (at least
-  2 frames), then released over 2 frames; repeated notes get a partial lift.
+* **Keys** pivot on a hinge behind the fallboard. Presses come only from
+  character contacts (`character_presses`): a paw strike holds its key for the
+  note's length but lets it up before the paw lifts; a landing of Claude holds
+  the keys under its left and right foot until just before the next take-off,
+  and Claude sinks with them. A key is at rest one frame before the contact,
+  fully down on the contact frame, released over 2 frames.
   A per-key custom property `glow` drives the emission of a shared material.
 * **Cat rig**: body, head, tail chain and four paw targets. The legs are
   *Stretch To* constraints from shoulder/hip to the paw target, so the
@@ -149,7 +154,7 @@ candles and string lights would cost a lot in EEVEE for little visible gain).
 `tools/check_scene.py` (Blender 5.0.1 and 4.5.4 LTS):
 
 ```
-[check] keys: 916/916 notes strike on their frame
+[check] keys: 419 key strikes, 2889 key-down frames, 0 without a character on the key (cat 1271, Claude 1618)
 [check] paws: 185/185 contacts land on their key while it sounds (18 different keys)
 [check] paws: max penetration 0.0 mm, frames with a paw > 6 cm up: 0
 [check] spacing: min gap Claude -> cat 3.9 cm

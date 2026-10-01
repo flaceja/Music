@@ -7,7 +7,9 @@ upright piano, the Claude avatar (a coral box with little legs and dynamic
 eyes) and a black cat, and animates all of it to JVKE's "this is what falling
 in love feels like":
 
-  * every one of the 916 notes of the piano MIDI presses its key, frame-exact
+  * a key goes down only where a character is on it: the cat's paw strikes
+    (real right-hand notes, frame-exact) and the keys under Claude's feet
+    when it lands on the beat
   * the cat walks, sits and stretches on the keyboard; its front paws land on
     real notes of the right hand at the moment they sound
   * Claude "plays" the left hand: it hops onto the bass notes on the beat,
@@ -1387,13 +1389,20 @@ RELEASE = 2           # frames to come back up
 
 
 class KeyAnim:
-    """Press curves per key, in frames. Also used to put paws on key surfaces."""
+    """Press curves per key, in frames. Also used to put paws/feet on key surfaces.
 
-    def __init__(self, music):
+    A key only goes down when a character presses it: a cat paw striking a
+    melody note (MIDI pitch and timing), or Claude landing on it (the keys
+    under its feet, on the beat). Keys nobody touches stay up, so what moves
+    on the keyboard is always where the characters are.
+    """
+
+    def __init__(self, presses):
+        """presses: {pitch: [Note, ...]}"""
         self.pts = {}
-        for p, notes in music.by_pitch.items():
+        for p, notes in presses.items():
             self.pts[p] = self._curve(sorted(notes, key=lambda n: n.on))
-        self.onsets = {p: [int(round(frame_of(n.on))) for n in ns] for p, ns in music.by_pitch.items()}
+        self.onsets = {p: [int(round(frame_of(n.on))) for n in ns] for p, ns in presses.items()}
 
     @staticmethod
     def _curve(notes):
@@ -1457,6 +1466,40 @@ class KeyAnim:
                 glow_f.append(f)
                 glow_v.append(g)
             bake(o, '["glow"]', 0, glow_f, glow_v, tol=0.01)
+
+
+CLAUDE_FOOT_X = 0.052           # feet at x +- this (Claude's local frame)
+
+
+def character_presses(music, cat_anim, claude_anim):
+    """Which keys go down, and when: only where a character touches them."""
+    presses = defaultdict(list)
+    # cat: every paw strike is a right-hand note; hold it for the note's length
+    # but release when the paw lifts for its next step
+    for paw, evs in cat_anim.events.items():
+        for k, e in enumerate(evs):
+            if not e[5]:
+                continue
+            t, p = e[1], e[4]
+            notes = [n for n in music.by_pitch[p] if abs(frame_of(n.on) - frame_of(t)) <= 1.01]
+            off = notes[0].off if notes else t + 0.2
+            lifts = [w[0] for w in cat_anim.windows if w[0] > t]      # hops, turns, stretch
+            if k + 1 < len(evs):
+                lifts.append(evs[k + 1][0])
+            if lifts:                                   # key is back up before the paw lifts
+                off = min(off, max(min(lifts) - (RELEASE + 1) / FPS, t + 0.07))
+            presses[p].append(Note(t, off, p, 90, "R"))
+    # Claude: landing on the beat presses the keys under its left and right feet
+    hops = claude_anim.hops
+    for k, h in enumerate(hops):
+        t = time_of(round(frame_of(h["t"])))
+        nxt = hops[k + 1]["t"] - hops[k + 1]["air"] if k + 1 < len(hops) else music.length
+        if nxt - t < (MIN_HOLD + RELEASE + 1) / FPS:
+            continue                                    # too short on the ground to press anything
+        off = max(t + MIN_HOLD / FPS, min(t + 0.22 + 0.4 * h["h"], nxt - (RELEASE + 1) / FPS))
+        for p in sorted({key_at(h["x1"] + side * CLAUDE_FOOT_X, Y_CLAUDE) for side in (-1, 1)}):
+            presses[p].append(Note(t, off, p, 90, "L"))
+    return presses
 
 
 # ============================================================================
@@ -2071,6 +2114,8 @@ class ClaudeAnim:
             if out and abs(h["t"] - out[-1]["t"]) < 0.05:
                 continue
             out.append(h)
+        for h in out:                                  # land exactly on a frame (keys go down there)
+            h["t"] = time_of(round(frame_of(h["t"])))
         x = self.start_x = -0.38
         for k, h in enumerate(out):
             # air time: take off only after the previous landing has settled a bit
@@ -2163,7 +2208,16 @@ class ClaudeAnim:
         self.world_head = [Vector((X[i], Y_CLAUDE, KEY_Z + 0.1 + Z[i])) for i in range(n)]
         bake(claude.root, "location", 0, fr, X)
         bake(claude.root, "location", 1, fr, [Y_CLAUDE] * n)
-        bake(claude.root, "location", 2, fr, [KEY_Z + z for z in Z])
+        # standing on a pressed key: sink with it
+        sink = []
+        for i, f in enumerate(fr):
+            if Z[i] > 1e-4:
+                sink.append(0.0)
+                continue
+            d = [KEY_Z - self.keys.surface_z(key_at(X[i] + sd * CLAUDE_FOOT_X, Y_CLAUDE), Y_CLAUDE, f)
+                 for sd in (-1, 1)]
+            sink.append(max(d))
+        bake(claude.root, "location", 2, fr, [KEY_Z + z - sk for z, sk in zip(Z, sink)])
         bake(claude.root, "rotation_euler", 2, fr, [a + b for a, b in zip(yaw_look, SPIN)], 1e-3)
         sz = [max(0.62, 1 + s - b + br) for s, b, br in zip(SQ, bounce, breathe)]
         sxy = [1 / math.sqrt(max(v, 0.3)) for v in sz]
@@ -2649,11 +2703,12 @@ def build():
     scene.camera = cam
 
     # animation, in dependency order
-    key_anim = KeyAnim(music)
-    key_anim.apply(keys, tl.n)
-    cat_anim = CatAnim(music, key_anim, tl, rng)
+    cat_anim = CatAnim(music, None, tl, rng)
     claude_anim = ClaudeAnim(music, tl, cat_anim, rng)
     cat_anim.plan_paws()
+    key_anim = KeyAnim(character_presses(music, cat_anim, claude_anim))
+    key_anim.apply(keys, tl.n)
+    cat_anim.keys = claude_anim.keys = key_anim
     claude_anim.bake(claude)
     cam_anim = CameraAnim(music, tl, cat_anim, claude_anim, rng)
     cam_anim.bake(cam, focus)
