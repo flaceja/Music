@@ -1,0 +1,8 @@
+render/
+frames/
+*.blend
+*.blend1
+*.mp3
+*.wav
+*.mp4
+__pycache__/
